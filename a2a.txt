@@ -1,0 +1,311 @@
+
+---
+
+ 🎯 Overview
+
+The Agent2Agent (A2A) Protocol is an open standard developed by Google that enables AI agents to communicate and collaborate with each other, regardless of the underlying framework or vendor they're built on.
+
+
+ 🤔 What is A2A?
+
+A2A is a universal communication protocol for AI agents - similar to how HTTP enables web browsers to communicate with servers, A2A enables AI agents to discover, communicate, and collaborate with each other.
+
+ The Problem It Solves
+
+Before A2A:
+- Agents built with different frameworks (LangGraph, CrewAI, AutoGen, etc.) couldn't communicate directly
+- Each integration required extensive custom code
+- No standard way for agents to discover each other's capabilities
+- Complex orchestration required proprietary solutions
+- Vendor lock-in and limited interoperability
+
+With A2A:
+- Universal language for agent communication
+- Agents can discover each other's capabilities automatically via AgentCards
+- Framework-agnostic - works with any AI agent implementation
+- Standardized task management and lifecycle
+- Open standard backed by major industry players
+
+
+
+ 🔑 Key Concepts
+
+ 1. AgentCard
+
+An AgentCard is a JSON document that serves as an agent's identity and capability declaration.
+
+Location: `/.well-known/agent.json`
+
+Structure:
+
+json
+{
+  "name": "Data Analysis Agent",
+  "description": "Performs statistical analysis on datasets",
+  "version": "1.0.0",
+  "url": "https://api.example.com/agents/analyst",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "analyze_data",
+      "name": "Data Analysis",
+      "description": "Analyze datasets and compute statistics",
+      "tags": ["analytics", "statistics"]
+    }
+  ]
+}
+
+
+ 2. Tasks
+
+A Task represents a unit of work with a complete lifecycle.
+
+Task States:
+
+
+SUBMITTED → WORKING → COMPLETED
+                 ↓
+              FAILED
+                 ↓
+         INPUT_REQUIRED
+
+
+Task Object:
+
+```json
+{
+  "id": "task_abc123",
+  "contextId": "ctx_xyz789",
+  "status": {
+    "state": "working",
+    "message": {
+      "role": "agent",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Processing your request..."
+        }
+      ]
+    }
+  },
+  "messages": [],
+  "createdAt": "2025-11-09T10:30:00Z",
+  "updatedAt": "2025-11-09T10:31:00Z"
+}
+```
+
+ 3. Messages
+
+Messages represent individual communication turns within a task.
+
+User Message:
+
+```json
+{
+  "role": "user",
+  "messageId": "msg_123",
+  "parts": [
+    {
+      "kind": "text",
+      "text": "Analyze the sales data"
+    }
+  ]
+}
+```
+
+Agent Response:
+
+```json
+{
+  "role": "agent",
+  "messageId": "msg_456",
+  "parts": [
+    {
+      "kind": "text",
+      "text": "Analysis complete. Total revenue: $2.4M"
+    },
+    {
+      "kind": "application/json",
+      "data": {
+        "totalRevenue": 2400000,
+        "growth": 0.18
+      }
+    }
+  ]
+}
+```
+
+ 4. Communication Patterns
+
+Three ways agents communicate:
+
+| Pattern | Description | Use Case |
+|---------|-------------|----------|
+| Polling | Client periodically requests status | Batch processing |
+| Server-Sent Events (SSE) | Server pushes updates in real-time | Interactive applications |
+| Webhooks | Server POSTs to client URL | Event-driven systems |
+
+---
+
+ 🏗️ Architecture
+
+ High-Level Architecture
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                     Client Application                      │
+│                  (Multi-Agent Orchestrator)                 │
+└────────────────┬───────────────────────┬───────────────────┘
+                 │                       │
+                 │ A2A Protocol         │ A2A Protocol
+                 │ (JSON-RPC 2.0)       │ (JSON-RPC 2.0)
+                 │                       │
+      ┌──────────▼─────────┐   ┌────────▼──────────┐
+      │   Agent A          │   │   Agent B         │
+      │   (Analytics)      │   │   (Reporting)     │
+      │                    │   │                   │
+      │  • AgentCard       │   │  • AgentCard      │
+      │  • Task Handler    │   │  • Task Handler   │
+      │  • Event Queue     │   │  • Event Queue    │
+      └────────────────────┘   └───────────────────┘
+```
+
+ Component Breakdown
+
+| Component | Responsibility |
+|-----------|----------------|
+| Client Agent | Discovers agents, delegates tasks, aggregates results |
+| Remote Agent | Exposes AgentCard, processes tasks, streams updates |
+| AgentCard | Declares capabilities and requirements |
+| Task | Tracks request lifecycle and state |
+| Event Queue | Delivers real-time updates to clients |
+
+---
+
+ 📡 Protocol Specification
+
+ JSON-RPC 2.0 Request Format
+
+Task Creation:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "message/stream",
+  "params": {
+    "message": {
+      "role": "user",
+      "messageId": "msg_abc123",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "What were our top products last quarter?"
+        }
+      ]
+    },
+    "taskId": "task_xyz789",
+    "contextId": "ctx_def456"
+  }
+}
+```
+
+ JSON-RPC 2.0 Response Format
+
+Success Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "taskId": "task_xyz789",
+    "contextId": "ctx_def456",
+    "status": {
+      "state": "submitted",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "kind": "text",
+            "text": "Task received"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+Error Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "Invalid params",
+    "data": {
+      "field": "message.parts",
+      "reason": "At least one part required"
+    }
+  }
+}
+```
+
+ Standard Error Codes
+
+| Code | Meaning | Description |
+|------|---------|-------------|
+| -32700 | Parse error | Invalid JSON |
+| -32600 | Invalid Request | Invalid JSON-RPC format |
+| -32601 | Method not found | Method doesn't exist |
+| -32602 | Invalid params | Invalid parameters |
+| -32603 | Internal error | Server error |
+| -32000 | Task not found | Task doesn't exist |
+| -32001 | Authentication failed | Invalid credentials |
+| -32002 | Rate limit exceeded | Too many requests |
+
+ Task Status Update (SSE)
+
+```
+event: taskStatus
+data: {
+data:   "taskId": "task_xyz789",
+data:   "status": {
+data:     "state": "working",
+data:     "message": {
+data:       "role": "agent",
+data:       "parts": [{"kind": "text", "text": "Processing..."}]
+data:     }
+data:   },
+data:   "final": false
+data: }
+
+event: message
+data: {
+data:   "kind": "message",
+data:   "role": "agent",
+data:   "messageId": "msg_response",
+data:   "parts": [
+data:     {"kind": "text", "text": "Analysis complete"}
+data:   ]
+data: }
+
+event: taskStatus
+data: {
+data:   "taskId": "task_xyz789",
+data:   "status": {
+data:     "state": "completed",
+data:     "message": {
+data:       "role": "agent",
+data:       "parts": [{"kind": "text", "text": "Done"}]
+data:     }
+data:   },
+data:   "final": true
+data: }
+```
